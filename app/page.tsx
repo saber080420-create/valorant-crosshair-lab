@@ -46,6 +46,16 @@ type HistoryRecord = {
   overall?: number;
 };
 type EasterEgg = { kind: "repeat"; previousShape: Shape } | { kind: "roast" };
+type WeaponTuning = {
+  archetype: string;
+  length: number;
+  gap: number;
+  thickness: number;
+  dotBias: boolean;
+  outerLines: boolean;
+  firingGuide: boolean;
+  reason: string;
+};
 
 const SCORE_KEYS: (keyof Scores)[] = ["reaction", "flick", "micro", "tracking", "recognition", "consistency"];
 const SCORE_LABELS: Record<keyof Scores, string> = {
@@ -67,6 +77,15 @@ const TESTS: { id: TestId; tag: string; title: string; description: string; metr
 ];
 
 const WEAPONS = ["Vandal", "Phantom", "Guardian", "Sheriff", "Operator", "Spectre", "Odin"];
+const WEAPON_TUNING: Record<string, WeaponTuning> = {
+  Vandal: { archetype: "首发爆头", length: 0, gap: -1, thickness: 0, dotBias: false, outerLines: false, firingGuide: false, reason: "收紧中心间隙，强化首发爆头与短连发定位" },
+  Phantom: { archetype: "连发控枪", length: 1, gap: 0, thickness: 0, dotBias: false, outerLines: true, firingGuide: true, reason: "增加外线参照，兼顾近中距离连续控枪" },
+  Guardian: { archetype: "精密点射", length: -1, gap: -1, thickness: 0, dotBias: true, outerLines: false, firingGuide: false, reason: "缩短线条并加入中心点，突出单发精度" },
+  Sheriff: { archetype: "手枪首发", length: 0, gap: -1, thickness: 0, dotBias: true, outerLines: false, firingGuide: false, reason: "保留清晰中心点，降低甩枪落点遮挡" },
+  Operator: { archetype: "狙击预瞄", length: -2, gap: 0, thickness: 0, dotBias: true, outerLines: false, firingGuide: false, reason: "压缩非开镜准星体积，服务架点与开镜前预瞄" },
+  Spectre: { archetype: "移动近战", length: 1, gap: 1, thickness: 0, dotBias: false, outerLines: true, firingGuide: true, reason: "扩大近距离中心参照，并开启连射修正外线" },
+  Odin: { archetype: "持续压枪", length: 2, gap: 1, thickness: 1, dotBias: false, outerLines: true, firingGuide: true, reason: "加粗并延长准星线，强化持续扫射时的方向反馈" },
+};
 const COLORS = ["#00F0FF", "#65FF77", "#FFD84D", "#FF5DA2", "#FFFFFF", "#9B7BFF"];
 const SCENES = [
   { background: "linear-gradient(135deg,#78918c,#314c4a)", target: "#ff4655" },
@@ -422,6 +441,7 @@ export default function Home() {
   );
   const totalMisses = flickResult.misses + microResult.misses + visibilityResult.misses + falseStarts;
   const poorPerformance = completed === 5 && overallScore < 65;
+  const weaponTuning = WEAPON_TUNING[weapon];
 
   const plans: Plan[] = useMemo(() => {
     if (poorPerformance) {
@@ -450,14 +470,12 @@ export default function Home() {
     const trackingWeak = scores.tracking < 60;
     const highEdpi = edpi > 400;
     const lowEdpi = edpi < 220;
-    const precisionWeapon = ["Guardian", "Sheriff", "Operator"].includes(weapon);
-    const sprayWeapon = ["Phantom", "Spectre", "Odin"].includes(weapon);
     const distanceGap = range === "远距离" ? -1 : range === "近距离" ? 1 : 0;
-    const baseGap = clamp(2 + distanceGap + (highEdpi ? 1 : 0) - (lowEdpi ? 1 : 0), 0, 4);
-    const baseLength = clamp(4 + (scores.flick < 60 ? 1 : 0) + (trackingWeak ? 1 : 0) - (scores.flick > 82 ? 1 : 0), 2, 6);
-    const mainShape: Shape = precise && precisionWeapon
+    const baseGap = clamp(2 + distanceGap + weaponTuning.gap + (highEdpi ? 1 : 0) - (lowEdpi ? 1 : 0), 0, 5);
+    const baseLength = clamp(4 + weaponTuning.length + (scores.flick < 60 ? 1 : 0) + (trackingWeak ? 1 : 0) - (scores.flick > 82 ? 1 : 0), 1, 7);
+    const mainShape: Shape = precise && weaponTuning.dotBias
       ? "极简圆点"
-      : trackingWeak || sprayWeapon
+      : trackingWeak || weaponTuning.outerLines
         ? "追踪十字"
         : scores.consistency < 58
           ? "稳健十字"
@@ -465,20 +483,20 @@ export default function Home() {
     return [
       {
         name: "主推荐",
-        subtitle: precise ? "精密首发特化方案" : trackingWeak ? "动态跟枪修正方案" : "稳定清晰平衡方案",
+        subtitle: `${weapon} · ${weaponTuning.archetype}`,
         shape: mainShape,
         length: baseLength,
-        thickness: needsVisibility ? 2 : 1,
+        thickness: clamp((needsVisibility ? 2 : 1) + weaponTuning.thickness, 1, 3),
         gap: baseGap,
         outline: needsVisibility,
-        dot: precise || (scores.reaction > 82 && scores.flick > 76),
+        dot: (weaponTuning.dotBias && scores.micro >= 62) || precise || (scores.reaction > 82 && scores.flick > 76),
         color: needsVisibility ? "#65FF77" : "#00F0FF",
-        outer: trackingWeak || sprayWeapon,
+        outer: trackingWeak || weaponTuning.outerLines,
         outerLength: trackingWeak ? 2 : 1,
         outerThickness: 1,
         outerGap: baseGap + 3,
         movementError: style === "移动跟枪",
-        firingError: style === "扫射压枪" && scores.tracking < 72,
+        firingError: weaponTuning.firingGuide && (style === "扫射压枪" || scores.tracking < 60),
       },
       {
         name: trackingWeak ? "稳定修正" : "竞技极简",
@@ -498,24 +516,24 @@ export default function Home() {
         firingError: false,
       },
       {
-        name: precisionWeapon ? "武器特化" : "高辨识度",
-        subtitle: precisionWeapon ? `${weapon} 首发精度特化` : "复杂背景与技能特效环境",
-        shape: (precisionWeapon && scores.micro >= 62 ? "极简圆点" : "空心准星") as Shape,
-        length: precisionWeapon ? 2 : 4,
-        thickness: 2,
-        gap: precisionWeapon ? 1 : clamp(baseGap + 1, 2, 5),
+        name: "武器特化",
+        subtitle: `${weapon} · ${weaponTuning.reason}`,
+        shape: (weaponTuning.dotBias && scores.micro >= 62 ? "极简圆点" : weaponTuning.outerLines ? "追踪十字" : "空心准星") as Shape,
+        length: clamp(3 + weaponTuning.length, 1, 6),
+        thickness: clamp(1 + weaponTuning.thickness + (needsVisibility ? 1 : 0), 1, 3),
+        gap: clamp(2 + weaponTuning.gap, 0, 4),
         outline: true,
-        dot: precisionWeapon,
+        dot: weaponTuning.dotBias,
         color: needsVisibility ? "#65FF77" : "#9B7BFF",
-        outer: sprayWeapon,
-        outerLength: 2,
+        outer: weaponTuning.outerLines,
+        outerLength: weaponTuning.outerLines ? 2 : 0,
         outerThickness: 1,
         outerGap: baseGap + 4,
         movementError: false,
-        firingError: sprayWeapon && style === "扫射压枪",
+        firingError: weaponTuning.firingGuide,
       },
     ];
-  }, [scores, range, edpi, weapon, style, totalMisses, poorPerformance]);
+  }, [scores, range, edpi, weapon, weaponTuning, style, totalMisses, poorPerformance]);
 
   const plan = plans[selectedPlan];
   const confidence = Math.round(clamp(
@@ -536,9 +554,10 @@ export default function Home() {
     else items.push(`目标辨识 ${scores.recognition} 分，无需厚重描边也能保持清晰。`);
     if (scores.flick >= 74) items.push(`甩枪定位 ${scores.flick} 分，缩短线长以减少目标遮挡。`);
     else items.push(`甩枪定位 ${scores.flick} 分，稍长线条能提供更稳定的中心参照。`);
-    items.push(`eDPI ${edpi}、${weapon} 与“${style}”共同修正了间隙、外线和动态误差。`);
+    items.push(`主武器 ${weapon}（${weaponTuning.archetype}）：${weaponTuning.reason}。`);
+    items.push(`eDPI ${edpi} 与“${style}”继续修正了间隙和动态误差。`);
     return items;
-  }, [scores, edpi, weapon, style, poorPerformance, overallScore, totalMisses]);
+  }, [scores, edpi, weapon, weaponTuning, style, poorPerformance, overallScore, totalMisses]);
 
   const code = useMemo(() => {
     const hex = color.replace("#", "").toUpperCase();
@@ -782,7 +801,27 @@ function SectionHeading({ index, title, subtitle, trailing, light = false }: { i
 }
 
 function NumberInput({ label, value, min, max, step, onChange, decimals = false }: { label: string; value: number; min: number; max: number; step: number; onChange: (value: number) => void; decimals?: boolean }) {
-  return <label className="input-card"><span>{label}</span><div><input type="number" value={value} min={min} max={max} step={step} onChange={(event) => onChange(clamp(Number(event.target.value), min, max))} /><small>{decimals ? "SENS" : "DPI"}</small></div><input type="range" value={value} min={min} max={max} step={step} onChange={(event) => onChange(Number(event.target.value))} /></label>;
+  const commit = (input: HTMLInputElement) => {
+    const parsed = Number(input.value);
+    if (input.value.trim() === "" || !Number.isFinite(parsed)) {
+      input.value = String(value);
+      return;
+    }
+    const next = clamp(parsed, min, max);
+    onChange(next);
+    input.value = String(next);
+  };
+  return <label className="input-card"><span>{label}</span><div><input
+    key={value}
+    type="number"
+    inputMode={decimals ? "decimal" : "numeric"}
+    defaultValue={value}
+    min={min}
+    max={max}
+    step={step}
+    onBlur={(event) => commit(event.currentTarget)}
+    onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
+  /><small>{decimals ? "SENS" : "DPI"}</small></div><input type="range" value={value} min={min} max={max} step={step} onChange={(event) => onChange(Number(event.target.value))} /></label>;
 }
 
 function SelectInput({ label, value, options, onChange }: { label: string; value: string; options: readonly string[]; onChange: (value: string) => void }) {

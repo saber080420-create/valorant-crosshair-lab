@@ -51,6 +51,10 @@ test("contains scoring, recommendation, and local-history logic", async () => {
   assert.match(page, /previousShape === plans\[0\]\.shape/);
   assert.match(page, /localStorage\.removeItem\("crosshair-lab-history"\)/);
   assert.match(page, /清除测试记录/);
+  assert.match(page, /WEAPON_TUNING/);
+  assert.match(page, /主武器 \$\{weapon\}/);
+  assert.match(page, /defaultValue=\{value\}/);
+  assert.match(page, /input\.value\.trim\(\) === ""/);
   assert.match(page, /overallScore < 65/);
   assert.match(page, /crosshair-pointer/);
   assert.match(page, /navigator\.clipboard\.writeText/);
